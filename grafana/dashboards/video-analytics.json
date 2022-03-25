@@ -19,7 +19,7 @@
   "links": [],
   "panels": [
     {
-      "content": "<img src=\"http://localhost:5000/video?\">",
+      "content": "<div style='display: flex; justify-content: center;'><img src='http://localhost:8045/video?'></div>",
       "gridPos": {
         "h": 9,
         "w": 11,
