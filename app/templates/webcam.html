@@ -1,0 +1,88 @@
+<html>
+    <head>
+        <style>
+            .row {
+                display: flex;
+                justify-content: center;
+
+            }
+            .row * {
+                flex: 1 1 100px;
+                width: 200px;
+            }
+        </style>
+    
+        <script>
+            // cross-platform stuff. 
+            //window.URL = window.URL || window.webkitURL;
+            navigator.getUserMedia = navigator.getUserMedia || navigator.webkitGetUserMedia || navigator.mozGetUserMedia || navigator.msGetUserMedia;
+    
+            const websocketUrl = path => {
+                const l = window.location;
+                return (
+                    (l.protocol === "https:" ? "wss://" : "ws://") + l.host + 
+                    (path.startsWith('/') ? '' : l.pathname) + path);
+            }
+    
+            function startVideo () {
+                const ws = new WebSocket(websocketUrl('/video/in'));
+                ws.onopen = () => { console.log("connected") }
+                ws.onmessage = e => { console.log('received') }
+                ws.onclose = e => { console.log('closed') }
+                window.onbeforeunload = function() {
+                    ws.onclose = function () {}; // disable onclose handler first
+                    ws.close();
+                };
+    
+                let mediaStream = null;
+                const video = document.getElementById('video');
+                const image = document.getElementById('image');
+                const canvas = document.getElementById('canvas');
+                const ctx = canvas.getContext('2d');
+                // Not showing vendor prefixes or code that works cross-browser.
+                navigator.getUserMedia(
+                    { video: true }, 
+                    (stream) => {
+                        if ('srcObject' in video) {
+                            video.srcObject = stream;
+                        } else {
+                            console.log('fallback', 'srcObject' in video)
+                            // Avoid using this in new browsers, as it is going away.
+                            video.src = URL.createObjectURL(stream);
+                        }
+                        mediaStream = stream;
+                    },
+                    (e) => { console.error("rejected", e) }
+                );
+                const interval = setInterval(() => {
+                    if (ws.readyState == 1 && mediaStream?.active) {
+                        ctx.drawImage(video, 0, 0);
+                        canvas.toBlob((b => {
+                            ws.send(b)
+                        }), 'image/jpeg', 0.85);
+                    } else if(ws.readyState == 0) {
+                        console.error('connecting')
+                    } else if(ws.readyState > 1) {
+                        console.error('closing')
+                        mediaStream && mediaStream.getTracks().forEach(t => t.stop());
+                        ws.readyState <= 1 && ws.close();
+                        clearInterval(interval)
+                    }
+                    
+                    
+
+                }, 100);
+            }
+        </script>
+    
+    </head>
+    <body>
+        <div class="row">
+            <video id="video" autoplay></video>
+            <canvas id="canvas" width="640" height="480" ></canvas>
+        </div>
+    </body>
+
+    <a href="#" onclick="startVideo()">Start</a> video.<br/>
+    <img src="/video">
+</html>
