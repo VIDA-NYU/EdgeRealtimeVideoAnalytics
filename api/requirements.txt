@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+websockets==10.1
+fire
+numpy
+opencv-python>=4.0.1.23
+Pillow
+# redis>=4.2.0
+git+https://github.com/beasteers/redis-py.git@fix-closed-connection-writer#egg=redis
+# aioredis
+jinja2

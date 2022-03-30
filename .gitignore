@@ -118,3 +118,5 @@ venv2.7/
 
 # mypy
 .mypy_cache/
+
+*.onnx

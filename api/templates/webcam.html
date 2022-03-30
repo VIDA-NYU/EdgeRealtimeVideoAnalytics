@@ -25,7 +25,7 @@
             }
     
             function startVideo () {
-                const ws = new WebSocket(websocketUrl('/video/in'));
+                const ws = new WebSocket(websocketUrl('/video/push'));
                 ws.onopen = () => { console.log("connected") }
                 ws.onmessage = e => { console.log('received') }
                 ws.onclose = e => { console.log('closed') }
@@ -54,24 +54,23 @@
                     },
                     (e) => { console.error("rejected", e) }
                 );
-                const interval = setInterval(() => {
-                    if (ws.readyState == 1 && mediaStream?.active) {
-                        ctx.drawImage(video, 0, 0);
-                        canvas.toBlob((b => {
-                            ws.send(b)
-                        }), 'image/jpeg', 0.85);
-                    } else if(ws.readyState == 0) {
-                        console.error('connecting')
-                    } else if(ws.readyState > 1) {
-                        console.error('closing')
-                        mediaStream && mediaStream.getTracks().forEach(t => t.stop());
-                        ws.readyState <= 1 && ws.close();
-                        clearInterval(interval)
-                    }
-                    
-                    
-
-                }, 100);
+                setTimeout(() => {
+                    const interval = setInterval(() => {
+                        if (ws.readyState == 1 && mediaStream?.active) {
+                            ctx.drawImage(video, 0, 0);
+                            canvas.toBlob((b => {
+                                ws.send(b)
+                            }), 'image/jpeg', 0.85);
+                        } else if(ws.readyState == 0) {
+                            console.error('connecting')
+                        } else if(ws.readyState > 1) {
+                            console.error('closing')
+                            mediaStream && mediaStream.getTracks().forEach(t => t.stop());
+                            ws.readyState <= 1 && ws.close();
+                            clearInterval(interval)
+                        }
+                    }, 100);
+                }, 1000)
             }
         </script>
     
@@ -84,5 +83,5 @@
     </body>
 
     <a href="#" onclick="startVideo()">Start</a> video.<br/>
-    <img src="/video">
+    <img src="/video/pull">
 </html>

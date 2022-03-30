@@ -1,21 +1,35 @@
 version: '3'
 services:
-  init:
-    build: ./app
-    depends_on:
-      - redisedge
-    command: ['init.py', '--url', 'redis://redisedge:6379']
   server:
-    build: ./app
+    build: ./api
     depends_on:
       - init
     ports:
       - 8045:8000
     entrypoint: ['uvicorn', 'server:app', '--host', '0.0.0.0', '--reload']
     volumes:
-     - './app:/app'
+     - './api:/app'
     environment:
       REDIS_URL: redis://redisedge:6379
+
+  # ml:
+  #   build: ./ml
+  #   command: app.py
+  #   # entrypoint: ['/bin/bash']
+  #   # command: ['-c', 'python app.py']
+  #   environment:
+  #     REDIS_URL: redis://redisedge:6379
+  # minimum:
+  #   build: ./app
+  #   depends_on:
+  #     - init
+  #   ports:
+  #     - 8001:8000
+  #   entrypoint: ['uvicorn', 'redis_fastapi_bug_repro:app', '--host', '0.0.0.0', '--reload']
+  #   volumes:
+  #    - './app:/app'
+  #   environment:
+  #     REDIS_URL: redis://redisedge:6379
   # capture:
   #   build: ./app
   #   depends_on:
@@ -25,7 +39,16 @@ services:
   #   #  - /dev/video0:/dev/video0
   #   # command: ['capture.py', '--url', 'redis://redisedge:6379']
   #   command: ['capture.py', '--url', 'redis://redisedge:6379', 'data/countvoncount.mp4']
-   
+
+  init:
+    build: ./redisedge
+    depends_on:
+      - redisedge
+    restart: "on-failure"
+    entrypoint: ['pipenv', 'run', 'python', 'init.py']
+    command: ''
+    environment:
+      REDIS_URL: redis://redisedge:6379
 
    ################
    # services
@@ -35,6 +58,14 @@ services:
     build: ./redisedge
     ports:
       - 6379:6379
+  redisinsight:
+    image: redislabs/redisinsight:latest
+    depends_on:
+      - redisedge
+    ports:
+      - '8035:8001'
+    # volumes:
+    #   - ./redisinsight:/db 
   prometheus:
     build: ./prometheus
     ports:

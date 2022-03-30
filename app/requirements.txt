@@ -1,9 +1,0 @@
-fastapi
-uvicorn[standard]
-websockets==10.1
-fire
-numpy
-opencv-python>=4.0.1.23
-Pillow
-redis>=4.2.0
-jinja2

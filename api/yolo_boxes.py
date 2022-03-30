@@ -1,15 +1,9 @@
-def nms(boxes):
+def nms(boxes, nms_thresh=0.45, conf_thresh=0.2):
     # assuming only one image in one batch
-    boxes = boxes.squeeze()
-    nms_thresh = 0.45
-    conf_thresh = 0.2
-    no_of_valid_elems = (boxes[:, 4] > conf_thresh).nonzero().numel()
-    boxes_confs_inv = 1 - boxes[:, 4]
-    _, sort_ids = torch.sort(boxes_confs_inv)
-    x1 = boxes[:, 0]
-    y1 = boxes[:, 1]
-    x2 = boxes[:, 2]
-    y2 = boxes[:, 3]
+    x1, y1, x2, y2, conf = boxes[0].T[:5]
+    no_of_valid_elems = (conf > conf_thresh).nonzero().numel()
+    _, sort_ids = torch.sort(1 - conf)
+    
     area = (x2 - x1 + 1) * (y2 - y1 + 1)
     for index in range(no_of_valid_elems):
         i = sort_ids[index]
@@ -24,16 +18,11 @@ def nms(boxes):
             overlap = (w * h) / area[sort_ids[new_ind:]]
             higher_nms_ind = (overlap > nms_thresh).nonzero()
             boxes[sort_ids[new_ind:][higher_nms_ind]] = torch.zeros(7, device=boxes.device)
-    return boxes.unsqueeze(0)
+    return boxes[None]
 
 
-def get_region_boxes(output):
-    conf_thresh = 0.2
-    num_classes = 20
-    num_anchors = 5
-    anchor_step = 2
-    anchors_ = [1.08,1.19,  3.42,4.41,  6.63,11.38,  9.42,5.11,  16.62,10.52]
-
+ANCHORS = [1.08,1.19,  3.42,4.41,  6.63,11.38,  9.42,5.11,  16.62,10.52]
+def get_region_boxes(output, conf_thresh=0.2, num_classes=20, num_anchors=5, anchor_step=2, anchors_=ANCHORS):
     anchors = torch.empty(num_anchors * 2, device=output.device)
     for i in range(num_anchors * 2):
         anchors[i] = anchors_[i]
@@ -80,8 +69,6 @@ def get_region_boxes(output):
 
 
 def boxes_from_tf(output):
-    boxes = get_region_boxes(output.permute(0, 3, 1, 2).contiguous())
-    boxes = nms(boxes)
-    return boxes
+    return nms(get_region_boxes(output.permute(0, 3, 1, 2).contiguous()))
 
 
