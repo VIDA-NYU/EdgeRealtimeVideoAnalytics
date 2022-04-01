@@ -64,8 +64,50 @@ async def video_input(websocket: WebSocket, name='camera:0', field='image', maxl
 
 
 @app.get('/video/pull')
+def video_feed(device_name='camera:0'):
+    async def stream():
+        while True:
+            p = red.pipeline(transaction=True)
+            p.xrevrange(device_name, count=1)  # Latest frame
+            # p.xrevrange(boxes_name, count=1)   # Latest boxes
+            cmsg, = await p.execute()
+
+            f = cmsg[0][1]['image'.encode('utf-8')] if cmsg else None
+            if f is None:
+                yield img_replace_frame(blank)
+                await asyncio.sleep(1)
+                continue
+
+            yield img_replace_frame(f)
+            await asyncio.sleep(0.01)
+
+    return StreamingResponse(stream(), media_type='multipart/x-mixed-replace; boundary=frame')
+
+
+
+@app.websocket('/boxes/pull')
+async def video_feed(websocket: WebSocket, device_name='camera:0', model='tinyyolov2'):
+    boxes_name = f'{device_name}:boxes'
+    await websocket.accept()
+    try:
+        i = 0
+        while True:
+            p = red.pipeline(transaction=True)
+            p.xrevrange(boxes_name, count=1)
+            bmsg, = await p.execute()
+            if bmsg:
+                websocket.send_json({
+                    'id': bmsg[0][0].decode('utf-8'),
+                    'boxes': json.loads(bmsg[0][1]['boxes'.encode('utf-8')]),
+                })
+    except WebSocketDisconnect:
+        print('Video Input Disconnected')
+
+
+
+@app.get('/video+boxes/pull')
 def video_feed(device_name='camera:0', model='tinyyolov2'):
-    boxes_name = f'{device_name}:{model}'
+    boxes_name = f'{device_name}:boxes'
     async def stream():
         while True:
             p = red.pipeline(transaction=True)
@@ -112,7 +154,7 @@ def draw_boxes_on_image_bytes(cmsg, bmsg, label):
             x, y, w, h = box['x']*W, box['y']*H, box['w']*W, box['h']*H
             draw = ImageDraw.Draw(img)
             draw.rectangle(((x, y), (x+w, y+h)), width=5, outline='red')
-            label += box['label']
+            label +=  ' '+box['label']
     arr = np.array(img)
     arr = cv2.cvtColor(arr, cv2.COLOR_BGR2RGB)
     cv2.putText(arr, label, (10, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,0,255), 1, cv2.LINE_AA)

@@ -3,6 +3,10 @@ import cv2
 import numpy as np
 from PIL import Image
 
+import collections
+
+BBox = collections.namedtuple('BBox', 'x, y, w, h, label, top_score, confidence')
+
 
 pjoin = os.path.join
 
@@ -61,12 +65,14 @@ class YoloBase(Onnx):
     input_size = (416, 416)
     nms_threshold = 0.3
     norm = True
+    channels_first = True
 
     @classmethod
     def preprocess(cls, img):
         img = img[:,:,:3]
         img = cv2.resize(img, cls.input_size)
-        img = np.transpose(img, [2, 0, 1])
+        if cls.channels_first:
+            img = np.transpose(img, [2, 0, 1])
         if cls.norm:
             img = img / 255.
         return [img[None].astype('float32')]
@@ -95,7 +101,7 @@ class Yolov2(YoloBase):
     def _postprocess(cls, Y):
         labels, anchors, conf_threshold = cls.labels, cls.anchors, cls.conf_threshold
         channel_stride = (len(labels) + 5)
-        nch, nx, ny = Y.shape
+        nch, ny, nx = Y.shape
         assert nch == len(anchors) * channel_stride, (
             "Incorrect output size. Check label and anchor dims: {} * ({} + 5) != {}".format(len(anchors), len(labels), nch))
         for cx in range(nx):
@@ -119,7 +125,8 @@ class Yolov2(YoloBase):
                     yield {
                         'x': x - w/2, 
                         'y': y - h/2, 
-                        'w': w, 'h': h, 
+                        'w': w, 
+                        'h': h, 
                         'label': labels[i_max], 
                         'top_score': top_score, 
                         'confidence': confidence, 
@@ -135,7 +142,7 @@ class TinyYolov2(Yolov2):
     INPUTS = ['image']
     
 
-
+# https://github.com/onnx/models/tree/main/vision/object_detection_segmentation/yolov3
 class Yolov3(YoloBase):
     '''A deep CNN model for real-time object detection that detects 80 different classes. A little bigger than 
     YOLOv2 but still very fast. As accurate as SSD but 3 times faster.
@@ -146,9 +153,13 @@ class Yolov3(YoloBase):
 
     @classmethod
     def preprocess(cls, img):
-        preprocessed = super().preprocess(img)
-        shape = np.asarray(img.shape[-2:][::-1], dtype='float32').reshape(1, 2)
-        return preprocessed + [shape]
+        x, = super().preprocess(img)#img.shape[-3:-1][::-1]
+        shape = np.array([cls.input_size[::-1]], dtype='float32')
+        return [x, shape]
+
+    @classmethod
+    def postprocess(cls, *outs):
+        return [nms(list(cls._postprocess(*outs)), cls.nms_threshold)]
 
     @classmethod
     def _postprocess(cls, boxes, scores, indices):
@@ -158,12 +169,12 @@ class Yolov3(YoloBase):
             score = scores[ibatch, icls, ibox]
             if score < cls.conf_threshold:
                 continue
-
+            # print(x, y, x2, y2, score)
             yield {
-                'x': x/iw, 
-                'y': y/ih, 
-                'w': (x2-x)/iw, 
-                'h': (y2-y)/ih, 
+                'x': x/iw, #min(max(0, x/iw), 1), 
+                'y': y/ih, #min(max(0, y/ih), 1), 
+                'w': (x2-x)/iw, #min(max(0, (x2-x)/iw), 1), 
+                'h': (y2-y)/ih, #min(max(0, (y2-y)/ih), 1), 
                 'label': cls.labels[icls], 
                 'top_score': 1, 
                 'confidence': score, 
@@ -175,6 +186,7 @@ class TinyYolov3(Yolov3):
     download_url = 'https://github.com/onnx/models/raw/main/vision/object_detection_segmentation/tiny-yolov3/model/tiny-yolov3-11.onnx'
     labels = COCO_LABELS
     INPUTS = ['input_1', 'image_shape']
+    @classmethod
     def _postprocess(cls, boxes, scores, indices):
         return super()._postprocess(boxes, scores, indices[0])
 
@@ -194,9 +206,10 @@ class Yolov4(YoloBase):
     xyscale = [1.2, 1.1, 1.05]
     threshold = 0.6
     INPUTS = ['input_1:0']
+    channels_first = False
 
     @classmethod
-    def postprocess(cls, *outs):
+    def _postprocess(cls, *outs):
         labels, threshold = cls.labels, cls.conf_threshold
 
         for anchors, Y, xyscale in zip(cls.anchors, outs, cls.xyscale):
@@ -228,7 +241,6 @@ class Yolov4(YoloBase):
                             'top_score': top_score, 
                             'confidence': confidence, 
                         }
-
 
 
 
@@ -310,3 +322,41 @@ def download_file(url, local_filename=None):
                 f.write(chunk)
     print('download finished.')
     return local_filename
+
+
+
+def draw_bboxes(im, boxes, color=(0,255,0)):
+    iy, ix = im.shape[:2]
+    for box in boxes:
+        x, y, w, h, label, top_score, confidence = BBox(**box)
+        x1, y1, x2, y2 = (
+            int(ix * max(x, 0)), 
+            int(iy * max(y, 0)), 
+            int(ix * min(x+w, 1)), 
+            int(iy * min(y+h, 1)))
+        print(label, x, y, w, h, x1, x2, y1, y2)
+
+        cv2.rectangle(im, (x1, y1), (x2, y2), color, 2)
+        if label:
+            cv2.rectangle(
+                im, 
+                (x1 + 4, y1 - 6), 
+                (x1 + 4 + 2 + 8*len(label), y1 + 6), 
+                color, -1)
+            cv2.putText(
+                im, label, 
+                (x1 + 10, y1 + 2), 
+                0, 0.3, (0, 0, 0))
+    return im
+
+
+
+def test(name, img='data/random.jpg'):
+    model = models[name.lower()]()
+
+    img = np.array(Image.open(img))
+    boxes = model(img)[0]
+    print(len(boxes))
+    for b in boxes:
+        print(b)
+    return boxes

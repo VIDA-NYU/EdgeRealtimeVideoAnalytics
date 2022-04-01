@@ -1,0 +1,86 @@
+version: '3'
+services:
+  server:
+    build: ./api
+    depends_on:
+      - init
+    ports:
+      - 8045:8000
+    entrypoint: ['uvicorn', 'server:app', '--host', '0.0.0.0', '--reload']
+    volumes:
+     - './api:/app'
+    environment:
+      REDIS_URL: redis://redisedge:6379
+
+  # ml:
+  #   build: ./ml
+  #   command: app.py
+  #   # entrypoint: ['/bin/bash']
+  #   # command: ['-c', 'python app.py']
+  #   environment:
+  #     REDIS_URL: redis://redisedge:6379
+  # minimum:
+  #   build: ./app
+  #   depends_on:
+  #     - init
+  #   ports:
+  #     - 8001:8000
+  #   entrypoint: ['uvicorn', 'redis_fastapi_bug_repro:app', '--host', '0.0.0.0', '--reload']
+  #   volumes:
+  #    - './app:/app'
+  #   environment:
+  #     REDIS_URL: redis://redisedge:6379
+  # capture:
+  #   build: ./app
+  #   depends_on:
+  #     - init
+  #   # To capture from a webcam, uncomment the next lines
+  #   # devices:
+  #   #  - /dev/video0:/dev/video0
+  #   # command: ['capture.py', '--url', 'redis://redisedge:6379']
+  #   command: ['capture.py', '--url', 'redis://redisedge:6379', 'data/countvoncount.mp4']
+
+  init:
+    build: ./redisedge
+    depends_on:
+      - redisedge
+    restart: "on-failure"
+    entrypoint: ['pipenv', 'run', 'python', 'init.py']
+    command: ''
+    environment:
+      REDIS_URL: redis://redisedge:6379
+
+   ################
+   # services
+   ################
+
+  redisedge:
+    build: ./redisedge
+    ports:
+      - 6379:6379
+  redisinsight:
+    image: redislabs/redisinsight:latest
+    depends_on:
+      - redisedge
+    ports:
+      - '8035:8001'
+    # volumes:
+    #   - ./redisinsight:/db 
+  prometheus:
+    build: ./prometheus
+    ports:
+      - 9090:9090
+  prometheus-redistimeseries-adapter:
+    image: redislabs/prometheus-redistimeseries-adapter:master
+    # TODO: freeze version
+    depends_on:
+      - prometheus
+    ports:
+      - 9201:9201
+    command: ['-redis-address', 'redisedge:6379', '-web.listen-address', '0.0.0.0:9201']
+  grafana:
+    build: ./grafana
+    depends_on:
+      - prometheus
+    ports:
+      - 3000:3000

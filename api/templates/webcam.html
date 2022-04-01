@@ -8,7 +8,6 @@
             }
             .row * {
                 flex: 1 1 100px;
-                width: 200px;
             }
         </style>
     
@@ -25,15 +24,18 @@
             }
     
             function startVideo () {
+                // send video
                 const ws = new WebSocket(websocketUrl('/video/push'));
-                ws.onopen = () => { console.log("connected") }
-                ws.onmessage = e => { console.log('received') }
-                ws.onclose = e => { console.log('closed') }
-                window.onbeforeunload = function() {
-                    ws.onclose = function () {}; // disable onclose handler first
-                    ws.close();
-                };
-    
+                ws.onopen = e => { console.log("video upload connected", e) }
+                ws.onmessage = e => { console.log('video upload received message back', e) }
+                ws.onclose = e => { console.log('video upload closed', e) }
+
+                // receive bounding boxes - this is just for demo - just going to print to logs
+                const bboxWs = new WebSocket(websocketUrl('/video/push'));
+                bboxWs.onopen = e => { console.log("bbox connected", e) }
+                bboxWs.onmessage = e => { console.log('bbox received', e) }
+                bboxWs.onclose = e => { console.log('bbox closed', e) }
+
                 let mediaStream = null;
                 const video = document.getElementById('video');
                 const image = document.getElementById('image');
@@ -77,11 +79,17 @@
     </head>
     <body>
         <div class="row">
-            <video id="video" autoplay></video>
-            <canvas id="canvas" width="640" height="480" ></canvas>
+            <div>
+                <p>Before Server</p>
+                <video id="video" autoplay></video>
+                <canvas id="canvas" width="640" height="480" style="display: none;"></canvas>
+            </div>
+            
+            <div>
+                <p>After Server</p>
+                <img src="/video+boxes/pull">
+            </div>
         </div>
-    </body>
-
-    <a href="#" onclick="startVideo()">Start</a> video.<br/>
-    <img src="/video/pull">
+        <a href="#" onclick="startVideo()">Start Capture</a><br/>
+    </body>    
 </html>
